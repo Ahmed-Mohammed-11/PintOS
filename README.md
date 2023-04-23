@@ -1,2 +1,2 @@
 # Pint-Operating-System
-files that needs to be edited in PintOS project
+files that need to be edited in PintOS project
