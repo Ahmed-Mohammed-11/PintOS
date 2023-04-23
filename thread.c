@@ -1,4 +1,4 @@
-clude "threads/thread.h"
+#include "threads/thread.h"
 #include <debug.h>
 #include <stddef.h>
 #include <random.h>
