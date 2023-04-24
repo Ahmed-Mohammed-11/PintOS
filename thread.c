@@ -160,7 +160,8 @@ void thread_print_stats(void)
    The code provided sets the new thread's `priority' member to
    PRIORITY, but no actual priority scheduling is implemented.
    Priority scheduling is the goal of Problem 1-3. */
-tid_t thread_create(const char *name, int priority,
+tid_t 
+thread_create(const char *name, int priority,
                     thread_func *function, void *aux)
 {
   struct thread *t;
@@ -197,7 +198,7 @@ tid_t thread_create(const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock(t);
-  if (thread_current()->priority < t->priority)
+  if (thread_current() -> priority < t -> priority)
     thread_yield();
 
   return tid;
@@ -234,9 +235,9 @@ void thread_unblock(struct thread *t)
 
   old_level = intr_disable();
   ASSERT(t->status == THREAD_BLOCKED);
-  list_push_back(&ready_list, &t->elem);
-  // list_insert_ordered(&ready_list, &t->elem, &compare_priority, NULL);
-  t->status = THREAD_READY;
+  // list_push_back(&ready_list, &t->elem);
+  list_insert_ordered(&ready_list, &t->elem, &compare_priority, NULL);
+  t -> status = THREAD_READY;
   intr_set_level(old_level);
 }
 
@@ -334,8 +335,8 @@ void thread_set_priority(int new_priority)
 {
   thread_current()->priority = new_priority;
   list_sort(&ready_list, &compare_priority, NULL);
-  struct thread *t = list_entry(list_begin(&ready_list), struct thread, elem);
-  if (new_priority < t->priority)
+  int priority_of_the_first_thread_in_the_ready_list = list_entry(list_begin(&ready_list), struct thread, elem) -> priority;
+  if (new_priority < priority_of_the_first_thread_in_the_ready_list)
     thread_yield();
 }
 
@@ -462,6 +463,11 @@ init_thread(struct thread *t, const char *name, int priority)
   strlcpy(t->name, name, sizeof t->name);
   t->stack = (uint8_t *)t + PGSIZE;
   t->priority = priority;
+  //MARWAN
+  if(!thread_mlfqs) t->original_priority = priority;
+  t-> lock_to_acquire = NULL;
+  list_init(&t->held_locks);
+  //MARWAN
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable();
