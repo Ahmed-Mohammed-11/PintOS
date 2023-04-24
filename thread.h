@@ -88,6 +88,12 @@ struct thread
    int64_t wakeup_ticks;
    /* Shared between thread.c and synch.c. */
    struct list_elem elem; /* List element. */
+   //MARWAN
+   int original_priority;
+
+   struct lock *lock_to_acquire;
+   struct list held_locks;
+   //MARWAN
 
 #ifdef USERPROG
    /* Owned by userprog/process.c. */
