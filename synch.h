@@ -24,6 +24,10 @@ struct lock
   struct semaphore semaphore; /* Binary semaphore controlling access. */
   struct list_elem elem;      /* List element. */
   int max_priority;           /* Maximum priority of threads waiting for the lock. */
+  // struct list waiters; /* List of waiting threads. */
+  //MARWAN
+  int lock_priority;
+  //MARWAN
 };
 
 void lock_init(struct lock *);
