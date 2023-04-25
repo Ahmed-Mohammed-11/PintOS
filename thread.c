@@ -346,11 +346,10 @@ struct list *get_sleep_list(void)
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void thread_set_priority(int new_priority)
 {
-  thread_current()->priority = new_priority;
-  list_sort(&ready_list, &compare_priority, NULL);
-  int priority_of_the_first_thread_in_the_ready_list = list_entry(list_begin(&ready_list), struct thread, elem) -> priority;
-  if (new_priority < priority_of_the_first_thread_in_the_ready_list)
-    thread_yield();
+  enum intr_level old_level = intr_disable ();
+  thread_current ()->original_priority = new_priority;
+  thread_update_priority (thread_current ());
+  intr_set_level (old_level);
 }
 
 /* Returns the current thread's priority. */
@@ -617,12 +616,53 @@ void thread_wakeup(struct thread *t)
   list_remove(&t->sleep_elem);
   list_push_back(&ready_list, &t->elem);
 }
+
+void
+t_order (struct thread *t)
+{  
+  enum intr_level old_level ;
+  old_level = intr_disable () ; 
+  list_remove (&t->elem);
+  list_insert_ordered (&ready_list, &t->elem, compare_priority, NULL);
+  intr_set_level (old_level);
+
+}
+
 bool compare_ticks(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
 {
   struct thread *t1 = list_entry(a, struct thread, sleep_elem);
   struct thread *t2 = list_entry(b, struct thread, sleep_elem);
   return t1->wakeup_ticks < t2->wakeup_ticks;
 }
+
+void
+thread_update_priority (struct thread *t)
+{
+  enum intr_level old_level ;
+  old_level = intr_disable () ; 
+
+  int original_priority = t->original_priority;
+  
+  if (list_empty (&t->held_locks))
+    t->priority = original_priority;
+  else{
+	  int lock_priority = list_entry (list_max (&t->held_locks,compare_locks_priority, NULL),struct lock, elem)->lock_priority;
+
+    if(original_priority > lock_priority){
+      t -> priority = original_priority;
+    }
+    else{
+      t -> priority = lock_priority;
+    }
+	} 
+  intr_set_level (old_level);
+}
+
+bool compare_locks_priority (const struct list_elem *a,const struct list_elem *b,void * aux UNUSED)
+{
+  return list_entry (a, struct lock, elem) -> lock_priority <= list_entry (b, struct lock, elem) -> lock_priority;
+}
+
 bool compare_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
 {
   struct thread *t1 = list_entry(a, struct thread, elem);
