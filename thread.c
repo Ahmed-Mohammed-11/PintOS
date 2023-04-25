@@ -136,6 +136,19 @@ void thread_tick(void)
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return();
+  
+  int64_t cur_ticks = timer_ticks();
+  struct list_elem *e;
+  for (e = list_begin(&sleep_list); e != list_end(&sleep_list); e = list_next(e))
+  {
+    struct thread *t = list_entry(e, struct thread, sleep_elem);
+    if (t->wakeup_ticks <= cur_ticks){
+			  thread_unblock(t);
+			  list_remove (e);
+    }
+    else
+      break;
+  }
 }
 
 /* Prints thread statistics. */
@@ -583,6 +596,7 @@ allocate_tid(void)
 
   return tid;
 }
+
 void thread_sleep(int64_t ticks)
 {
   enum intr_level old_level;
@@ -591,9 +605,8 @@ void thread_sleep(int64_t ticks)
   {
     old_level = intr_disable();
     cur->wakeup_ticks = ticks;
-    cur->status = THREAD_BLOCKED;
     list_insert_ordered(&sleep_list, &cur->sleep_elem, &compare_ticks, NULL);
-    schedule();
+    thread_block();
     intr_set_level(old_level);
   }
 }
