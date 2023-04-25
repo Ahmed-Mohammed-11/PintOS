@@ -145,3 +145,4 @@ bool compare_ticks(const struct list_elem *a, const struct list_elem *b, void *a
 bool compare_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 
 #endif /* threads/thread.h */
+
