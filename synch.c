@@ -232,100 +232,48 @@ void donate_priority_till_last_level(struct thread *t){
    interrupt handler.  This function may be called with
    interrupts disabled, but interrupts will be turned back on if
    we need to sleep. */
-void lock_acquire(struct lock *lock)
+void
+lock_acquire (struct lock *lock)
 {
-  ASSERT(lock != NULL);
-  ASSERT(!intr_context());
-  ASSERT(!lock_held_by_current_thread(lock));
-  //MARWAN
-  enum intr_level old_level;
-  old_level = intr_disable();
+  ASSERT (lock != NULL);
+  ASSERT (!intr_context ());
+  ASSERT (!lock_held_by_current_thread (lock));
 
-  struct thread *current_thread = thread_current();
-  // list_push_back(&current_thread->locks_wait_for, &lock);
-  current_thread -> lock_to_acquire = lock;
-
-  if(current_thread -> priority > lock -> lock_priority){
-    lock -> lock_priority = current_thread -> priority;
-  }
-  
-  if(!thread_mlfqs) donate_priority_till_last_level(current_thread);
-  intr_set_level(old_level);
-  //MARWAN
-
-  sema_down(&lock->semaphore);
-  //MARWAN
-  if(!thread_mlfqs) list_push_back(&thread_current() -> held_locks, &lock);
-  //MARWAN
-  lock->holder = thread_current();
+  sema_down (&lock->semaphore);
+  lock->holder = thread_current ();
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
    on failure.  The lock must not already be held by the current
    thread.
-
    This function will not sleep, so it may be called within an
    interrupt handler. */
-bool lock_try_acquire(struct lock *lock)
+bool
+lock_try_acquire (struct lock *lock)
 {
   bool success;
 
-  ASSERT(lock != NULL);
-  ASSERT(!lock_held_by_current_thread(lock));
+  ASSERT (lock != NULL);
+  ASSERT (!lock_held_by_current_thread (lock));
 
-  success = sema_try_down(&lock->semaphore);
+  success = sema_try_down (&lock->semaphore);
   if (success)
-    lock->holder = thread_current();
+    lock->holder = thread_current ();
   return success;
 }
 
 /* Releases LOCK, which must be owned by the current thread.
-
    An interrupt handler cannot acquire a lock, so it does not
    make sense to try to release a lock within an interrupt
    handler. */
-void lock_release(struct lock *lock)
+void
+lock_release (struct lock *lock) 
 {
-  ASSERT(lock != NULL);
-  ASSERT(lock_held_by_current_thread(lock));
-  //MARWAN
-  enum intr_level old_level;
-  old_level = intr_disable();
-  if(!list_empty(&lock->semaphore.waiters)){
-    int max_priority_in_waiters_on_lock = list_entry(list_max(&lock->semaphore.waiters, &compare_less_priority, NULL), struct thread, elem) -> priority;
-    lock -> lock_priority = max_priority_in_waiters_on_lock;
-  }else{
-    lock -> lock_priority = -1;
-  }
-  list_remove(&lock);
-
-  struct list held_locks = thread_current() -> held_locks;
-
-  if(!list_empty(&held_locks)){
-
-    struct lock *e = list_begin(&held_locks);
-    int max_priority_of_held_locks = e -> lock_priority;
-    for (e = list_next(&held_locks); e != list_end (&held_locks); e = list_next (e)){
-        if(e -> lock_priority > max_priority_of_held_locks){
-          max_priority_of_held_locks = e -> lock_priority;
-        }
-    }
-
-    if(max_priority_of_held_locks > thread_current() -> original_priority){
-      thread_current() -> priority = max_priority_of_held_locks;
-    }else{
-      thread_current() -> priority = thread_current() -> original_priority;
-    }
-  }else{
-    thread_current() -> priority = thread_current() -> original_priority;
-  }
-
-  intr_set_level(old_level);
-  //MARWAN
-
+  ASSERT (lock != NULL);
+  ASSERT (lock_held_by_current_thread (lock));
 
   lock->holder = NULL;
-  sema_up(&lock->semaphore);
+  sema_up (&lock->semaphore);
 }
 
 /* Returns true if the current thread holds LOCK, false
