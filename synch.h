@@ -23,8 +23,6 @@ struct lock
   struct thread *holder;      /* Thread holding lock (for debugging). */
   struct semaphore semaphore; /* Binary semaphore controlling access. */
   struct list_elem elem;      /* List element. */
-  int max_priority;           /* Maximum priority of threads waiting for the lock. */
-  // struct list waiters; /* List of waiting threads. */
   //MARWAN
   int lock_priority;
   //MARWAN
@@ -59,4 +57,3 @@ void cond_broadcast(struct condition *, struct lock *);
                                : "memory")
 
 #endif /* threads/synch.h */
-
