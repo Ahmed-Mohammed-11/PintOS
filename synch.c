@@ -118,6 +118,7 @@ void sema_up(struct semaphore *sema)
   if (!list_empty(&sema->waiters))
   {
     struct thread *t = list_entry(list_max(&sema->waiters, &compare_less_priority, NULL), struct thread, elem);
+    
     list_remove(&t->elem);
     thread_unblock(t);
     sema->value++;
@@ -196,7 +197,7 @@ void lock_init(struct lock *lock)
 void donate_priority_till_last_level(struct thread *t){
   struct lock *lock_to_acquire = t -> lock_to_acquire;
   struct thread *holder = lock_to_acquire -> holder;
-  
+
   //base case
   if(lock_to_acquire == NULL || holder == NULL) return;
 
@@ -287,6 +288,41 @@ void lock_release(struct lock *lock)
 {
   ASSERT(lock != NULL);
   ASSERT(lock_held_by_current_thread(lock));
+  //MARWAN
+  enum intr_level old_level;
+  old_level = intr_disable();
+  if(!list_empty(&lock->semaphore.waiters)){
+    int max_priority_in_waiters_on_lock = list_entry(list_max(&lock->semaphore.waiters, &compare_less_priority, NULL), struct thread, elem) -> priority;
+    lock -> lock_priority = max_priority_in_waiters_on_lock;
+  }else{
+    lock -> lock_priority = -1;
+  }
+  list_remove(&lock);
+
+  struct list held_locks = thread_current() -> held_locks;
+
+  if(!list_empty(&held_locks)){
+
+    struct lock *e = list_begin(&held_locks);
+    int max_priority_of_held_locks = e -> lock_priority;
+    for (e = list_next(&held_locks); e != list_end (&held_locks); e = list_next (e)){
+        if(e -> lock_priority > max_priority_of_held_locks){
+          max_priority_of_held_locks = e -> lock_priority;
+        }
+    }
+
+    if(max_priority_of_held_locks > thread_current() -> original_priority){
+      thread_current() -> priority = max_priority_of_held_locks;
+    }else{
+      thread_current() -> priority = thread_current() -> original_priority;
+    }
+  }else{
+    thread_current() -> priority = thread_current() -> original_priority;
+  }
+
+  intr_set_level(old_level);
+  //MARWAN
+
 
   lock->holder = NULL;
   sema_up(&lock->semaphore);
