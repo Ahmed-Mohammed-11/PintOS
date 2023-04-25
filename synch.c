@@ -32,6 +32,23 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+static struct thread *max_priority_in_waiters(struct semaphore *sema)
+{
+  return list_entry (list_max (&sema->waiters, compare_priority, NULL),struct thread, elem);
+}
+
+static void
+lock_update_priority (struct lock *lock)
+{
+  if (list_empty (&(&lock->semaphore)->waiters))
+    lock->lock_priority = -1;
+  else{
+	  struct thread *max_thread = max_priority_in_waiters(&lock->semaphore);
+    if (lock->lock_priority < max_thread->priority)
+	    lock->lock_priority = max_thread->priority;
+	}
+}
+
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
    manipulating it:
@@ -187,41 +204,12 @@ sema_test_helper(void *sema_)
 void lock_init(struct lock *lock)
 {
   ASSERT(lock != NULL);
-  //MARWAN
-  lock -> lock_priority = -1;
-  //MARWAN
   lock->holder = NULL;
   sema_init(&lock->semaphore, 1);
-}
 
-void donate_priority_till_last_level(struct thread *t){
-  struct lock *lock_to_acquire = t -> lock_to_acquire;
-  struct thread *holder = lock_to_acquire -> holder;
-
-  //base case
-  if(lock_to_acquire == NULL || holder == NULL) return;
-
-  if(t -> priority > lock_to_acquire -> lock_priority){
-      lock_to_acquire -> lock_priority = t -> priority;
-      struct list held_locks = holder -> held_locks;
-
-      if(!list_empty(&held_locks)){
-
-        struct lock *e = list_begin(&held_locks);
-        int max_priority_of_held_locks = e -> lock_priority;
-        for (e = list_next(&held_locks); e != list_end (&held_locks); e = list_next (e)){
-            if(e -> lock_priority > max_priority_of_held_locks){
-              max_priority_of_held_locks = e -> lock_priority;
-            }
-        }
-
-        if(max_priority_of_held_locks > holder -> priority){
-          holder -> original_priority = holder -> priority;
-          holder -> priority = max_priority_of_held_locks;
-        }
-      }
-      donate_priority_till_last_level(holder);
-  }
+  //MARWAN
+  lock -> lock_priority = 0;
+  //MARWAN
 }
 
 /* Acquires LOCK, sleeping until it becomes available if
@@ -239,8 +227,41 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
+  if(lock->holder != NULL ){
+    enum intr_level old_level = intr_disable();
+    thread_current() -> lock_to_acquire = lock ;
+    if(!thread_mlfqs){
+      int curr_prio = thread_get_priority();
+      struct lock *tmp = lock ;
+      struct thread *holder = lock -> holder;
+      while (tmp->lock_priority < curr_prio)
+		    {
+		      tmp->lock_priority = curr_prio;
+		      thread_update_priority (holder);
+		      if (holder-> status == THREAD_READY){
+            t_order(holder);
+          } 
+          tmp = holder -> lock_to_acquire;
+		      if (tmp == NULL) break;
+		      else{ holder = tmp -> holder; }
+		    }
+		}intr_set_level (old_level); 
+  }
+
   sema_down (&lock->semaphore);
-  lock->holder = thread_current ();
+  enum intr_level old_level ;
+  old_level = intr_disable () ; 
+  struct thread *curr_thread = thread_current();
+  curr_thread -> lock_to_acquire = NULL ;
+  list_push_back(&curr_thread -> held_locks , &lock-> elem);
+  lock -> holder = curr_thread;
+  intr_set_level(old_level);
+
+  if(!thread_mlfqs){
+    lock_update_priority(lock);
+    thread_update_priority(thread_current());
+    thread_yield();
+  }
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -271,6 +292,13 @@ lock_release (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
+  enum intr_level old_level = intr_disable();
+  list_remove(&lock->elem);
+  intr_set_level(old_level);
+
+  if(!thread_mlfqs){
+    thread_update_priority(lock->holder);
+  }
 
   lock->holder = NULL;
   sema_up (&lock->semaphore);
@@ -379,3 +407,4 @@ void cond_broadcast(struct condition *cond, struct lock *lock)
   while (!list_empty(&cond->waiters))
     cond_signal(cond, lock);
 }
+
