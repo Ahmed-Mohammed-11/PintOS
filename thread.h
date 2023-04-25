@@ -82,7 +82,6 @@ struct thread
    char name[16];               /* Name (for debugging purposes). */
    uint8_t *stack;              /* Saved stack pointer. */
    int priority;                /* Priority. */
-   int donated_priority;        /* Priority donated by other threads. */
    struct list_elem allelem;    /* List element for all threads list. */
    struct list_elem sleep_elem; /* List element. */
    int64_t wakeup_ticks;
@@ -90,7 +89,6 @@ struct thread
    struct list_elem elem; /* List element. */
    //MARWAN
    int original_priority;
-
    struct lock *lock_to_acquire;
    struct list held_locks;
    //MARWAN
@@ -142,7 +140,7 @@ int thread_get_load_avg(void);
 void thread_sleep(int64_t ticks);
 void thread_wakeup(struct thread *t);
 bool compare_ticks(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+bool compare_locks_priority (const struct list_elem *a,const struct list_elem *b,void * aux UNUSED);
 bool compare_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 
 #endif /* threads/thread.h */
-
