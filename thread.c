@@ -19,7 +19,7 @@
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
-
+#define DEBUG false
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
@@ -59,6 +59,7 @@ static unsigned thread_ticks; /* # of timer ticks since last yield. */
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
+static real load_avg;
 
 static void kernel_thread(thread_func *, void *aux);
 
@@ -93,6 +94,8 @@ void thread_init(void)
   list_init(&ready_list);
   list_init(&sleep_list);
   list_init(&all_list);
+
+  load_avg = 0;
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread();
@@ -136,6 +139,15 @@ void thread_tick(void)
   /* Enforce preemption. */
   if (++thread_ticks >= TIME_SLICE)
     intr_yield_on_return();
+
+  if (thread_mlfqs)
+  {
+    increment_recent_cpu ();
+    if (thread_ticks % TIME_SLICE == 0)
+    {
+      calculate_advanced_priority (thread_current (), NULL);
+    }
+  }
   
   int64_t cur_ticks = timer_ticks();
   struct list_elem *e;
@@ -358,31 +370,138 @@ int thread_get_priority(void)
   return thread_current()->priority;
 }
 
-/* Sets the current thread's nice value to NICE. */
-void thread_set_nice(int nice UNUSED)
+//********************* Abdulrahman **************************
+
+void
+every_one_second_update (void)
 {
-  /* Not yet implemented. */
+  enum intr_level old_level = intr_disable ();
+  
+  /* Update system load average. */
+  calculate_load_avg ();
+
+  calculate_recent_cpu_for_all ();
+
+  intr_set_level (old_level);
+}
+
+void
+calculate_load_avg (void) {
+  enum intr_level old_level = intr_disable ();
+  struct thread *curr = thread_current ();
+  int ready_threads = list_size (&ready_list);
+  if (curr != idle_thread)
+  {
+    ready_threads = ready_threads + 1; // ready threads + current running thread
+  }
+  
+  load_avg = add_real(div_int(mult_int(load_avg, 59), 60), div_int(to_real(ready_threads), 60));
+  intr_set_level (old_level);
+}
+
+void
+try_thread_yeild (void)
+{
+  enum intr_level old_level = intr_disable ();
+  bool result = !list_empty (&ready_list) && list_entry (list_back (&ready_list), struct thread, elem)->priority > thread_get_priority ();
+  intr_set_level (old_level);
+  
+  if (result)
+  {
+    thread_yield ();
+  }
+}
+
+void
+calculate_recent_cpu (struct thread *t, void *aux UNUSED)
+{
+  //if (t != idle_thread)
+  //{
+    if (DEBUG) printf("claculate recent cpu\n");
+    t->recent_cpu = add_int(div_real(mult_real(mult_int(load_avg, 2), t->recent_cpu), add_int(mult_int(load_avg, 2), 1)), t->nice);
+    if (DEBUG) printf("claculated recent cpu = %d\n", t->recent_cpu);
+    calculate_advanced_priority (t, NULL);
+  //}
+}
+
+void
+calculate_recent_cpu_for_all (void)
+{
+  if (DEBUG) printf("calculate recent cpu for all\n");
+  thread_foreach (calculate_recent_cpu, NULL);
+}
+
+void
+increment_recent_cpu (void)
+{
+  struct thread *t = thread_current ();
+  if (t != idle_thread) {
+    t->recent_cpu = add_int(t->recent_cpu, 1);
+  }
+}
+
+void
+calculate_advanced_priority (struct thread *t, void *aux UNUSED)
+{
+  if (t != idle_thread)
+  {
+    t->priority = PRI_MAX - (to_nearest_int(div_int(t->recent_cpu, 4))) - t->nice * 2;
+    if (t->priority > PRI_MAX)
+    {
+      t->priority = PRI_MAX;
+    }
+    else if (t->priority < PRI_MIN)
+    {
+      t->priority = PRI_MIN;
+    }
+  }
+}
+
+void
+calculate_advanced_priority_for_all (void) {
+  enum intr_level old_level = intr_disable ();
+  thread_foreach (calculate_advanced_priority, NULL);
+  intr_set_level (old_level);
+}
+
+/* Sets the current thread's nice value to NICE. */
+void thread_set_nice(int nice)
+{
+  thread_current ()->nice = nice;
+  if (nice < -20)
+  {
+    thread_current ()->nice = -20;
+  }
+  if (nice > 20)
+  {
+    thread_current ()->nice = 20;
+  }
+  calculate_advanced_priority (thread_current (), NULL);
+  try_thread_yeild ();
+}
+
+bool
+compare_threads (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+{
+  return list_entry (a, struct thread, elem)->priority <= list_entry (b, struct thread, elem)->priority;
 }
 
 /* Returns the current thread's nice value. */
 int thread_get_nice(void)
 {
-  /* Not yet implemented. */
-  return 0;
+  return thread_current()->nice;
 }
 
 /* Returns 100 times the system load average. */
 int thread_get_load_avg(void)
 {
-  /* Not yet implemented. */
-  return 0;
+  return to_nearest_int(mult_int(load_avg, 100));
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int thread_get_recent_cpu(void)
 {
-  /* Not yet implemented. */
-  return 0;
+  return to_nearest_int(mult_int(thread_current()->recent_cpu, 100));
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
@@ -480,6 +599,17 @@ init_thread(struct thread *t, const char *name, int priority)
   t-> lock_to_acquire = NULL;
   list_init(&t->held_locks);
   //MARWAN
+  //************ Abdulrahman ***************
+  if (t == initial_thread)
+  {
+    t->recent_cpu = 0;
+    t->nice = 0;
+  }
+  else
+  {
+    t-> recent_cpu = thread_get_recent_cpu ();
+    t->nice = thread_get_nice ();
+  }
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable();
