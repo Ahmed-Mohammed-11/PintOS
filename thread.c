@@ -358,10 +358,11 @@ struct list *get_sleep_list(void)
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void thread_set_priority(int new_priority)
 {
-  enum intr_level old_level = intr_disable ();
-  thread_current ()->original_priority = new_priority;
-  thread_update_priority (thread_current ());
-  intr_set_level (old_level);
+  thread_current()->priority = new_priority;
+  list_sort(&ready_list, &compare_priority, NULL);
+  struct thread *t = list_entry(list_begin(&ready_list), struct thread, elem);
+  if (new_priority < t->priority)
+    thread_yield();
 }
 
 /* Returns the current thread's priority. */
