@@ -1,0 +1,253 @@
+			+--------------------+
+			|        CS 3204     |
+			| PROJECT 1: THREADS |
+			|   DESIGN DOCUMENT  |
+			+--------------------+
+				   
+---- GROUP ----
+
+>> Fill in the names and email addresses of your group members.
+
+Ahmed Mohamed Ahmed Abdallah  -  es-AhmedMohammed2025@alexu.edu.eg
+Marwan Essam eldien Rashad    -  es-MarwanEssam2025@alexu.edu.eg
+Youssef emad mohamed habib    -  es-YoussefEmad2025@alexu.edu.eg
+Abdulrahman Aladdin Essayed   -  es-Abdel-RahmanAladdin2025@alexu.edu.eg
+FirstName LastName <email@domain.example>
+
+---- PRELIMINARIES ----
+
+>> If you have any preliminary comments on your submission, notes for the
+>> TAs, or extra credit, please give them here.
+
+>> https://www.youtube.com/watch?v=myO2bs5LMak
+>> https://www.youtube.com/watch?v=4-OjMqyygss&t=1s
+
+			     ALARM CLOCK
+			     ===========
+
+---- DATA STRUCTURES ----
+
+>> Changed data fields in struct thread in "thread.h"
+	. added field "wakeup_ticks" of type int -> used to hold the number of ticks to sleep for .
+	. added field "sleep_elem" of type struct list_elem -> used in the implementation of function timer_sleep . 
+    
+
+---- ALGORITHMS ----
+
+>> A2: Briefly describe what happens in a call to timer_sleep(),
+    >>when the timer_sleep():
+	  . First we disable interrupts .
+	  . Then we calculate the number of ticks to sleep for by adding the current ticks to the number of ticks to sleep for .
+	  . then we call function thread_sleep(total number of ticks that the thread need to sleep)
+	  . Then we call intr_set_level (INTR_ON) to enable interrupts .
+	  >>thread_sleep():
+	      . First we check if the current thread is not idle thread .
+		  . Then disable interrupts .
+		  . Then we set the wakeup_ticks of the current thread to the total number of ticks that the thread need to sleep .	
+		  . Then we insert ordered the current thread to the list of sleeping threads according to the wakeup_ticks .
+		  . Then we call thread_block() to block the current thread .
+		  . Then we call intr_set_level (INTR_ON) to enable interrupts .
+
+   
+>> A3: What steps are taken to minimize the amount of time spent in the timer interrupt handler?
+    >>when the timer_interrupt() is executed every tick:
+	  . as we can saw in the function timer_sleep() we insert the current thread to the list of sleeping threads according to the wakeup_ticks .
+	  . Then in the timer_interrupt() we check if the list is empty or not .
+	  . If it is not empty then it iterate over the list of sleeping threads and check if the wakeup_ticks of the first thread in the list is less than or equal to the current ticks .
+	  . Then we call function thread_unblock() to unblock the threads that have wakeup_ticks less than or equal to the current ticks .
+	  . Then we remove the threads from the list of sleeping threads .
+	>> we don't iterate over the whole list of sleeping threads every tick as we know that the list is sorted according to the wakeup_ticks .
+	>> so we only iterate until we find a thread that has wakeup_ticks greater than the current ticks .
+---- SYNCHRONIZATION ----
+
+>> A4: How are race conditions avoided when multiple threads call timer_sleep() simultaneously?
+    >> we avoid the race condition by disabling interrupts before we insert the current thread to the list of sleeping threads and enable interrupts after that.
+
+>> A5: How are race conditions avoided when a timer interrupt occur during a call to timer_sleep()?
+    >> we disable interrupts before we iterate over the list of sleeping threads and enable interrupts after that. 
+
+---- RATIONALE ----
+
+>> A6: Why did you choose this design?  In what ways is it superior to
+>> another design you considered?
+     >> we choose this design because it is simple, easy to implement and it is efficient as it only 
+	    iterate over the list of sleeping threads when it is not empty until it finds a thread that has wakeup_ticks greater than the current ticks .
+	 >> we also considered another design that we add the thread that want to sleep without an order and to iterate over the list of sleeping threads every tick and check if
+	    the wakeup_ticks of the first thread in the list is less than or equal to the current ticks but it is not efficient as the design we choose .
+			
+			 PRIORITY SCHEDULING
+			 ===================
+
+---- DATA STRUCTURES ----
+
+>> Changed data fields in struct thread in "thread.h"
+	. added field "original_priority" of type int -> used as a backup of the priority field so to restore it after usage .
+	. added field "lock_to_acquire" of type struct lock -> used in the implementation of lock_acquire function .
+	. added field "held_locks" of type struct list -> list of all locks held by a specific thread and used in lock_acquire function, also .
+>> Changed data fields in struct lock in "synch.h"
+	. added field "lock_priority" of type int -> to hold the priority of the lock which is the priority of the highest thread in waiters .
+	. added field "elem" of type struct list_elem -> used in the implementation of function lock_acquire and lock_release .
+
+>> Following a nested priority donation scenario to explain the sequence and DS used (refer to submitted png files)
+	. Thread 1 is created with priority default set to 31 and wants to acquire lock 1 .
+	. It acquires it and it becomes the holder of that lock .
+	. Thread 2 is created with priority  31 and then becomes 40 and wants to acquire lock 2 .
+	. It acquires it and it becomes the holder of that lock .
+	. It then wants to acquire lock 1 .
+	. It donates priority to thread 1 so the priority of thread 1 is now 40 and the lock_prioirty also becomes 40 .
+	. Thread 3 is created with priority 31 and then becomes 56 and wants to acquire lock 3 .
+	. It acquires it and becomes the holder of that lock .
+	. It then wants to acquire lock 2 .
+	. It donates priority to thread 2 and thread 1 so their priorities become 56 as thread 3 .
+	. The priority of locks 1 and 2 also becomes 56 following their waiters .
+	. Thread 4 is created with priority 31 and then becomes 32 and wants to acquire lock 3 .
+	. It waits normally on that lock with no donation here as the priority is less than other priorities .
+	. Thread 1 finishised leaving lock 1 to thread 2 to acquire and becomes the holder of it .
+	. Thread 1 priority returns to the original priority which is 31.
+	. Thread 2 finishes and leaves lock 2 for thread 3 .
+	. Lock 2 priority becomes 32 as the largest waiter thread 4 .
+	. Thread 2 priority becomes 40 as it was before donation .
+	. Thread 3 finishes leaving lock 3 for thread 4 .
+	. Done .
+
+
+---- ALGORITHMS ----
+
+>> How do you ensure that the highest priority thread waiting for
+	. function schedule() will call the next thread from the ready list which is sorted by priority . 
+	. As mentioned ealier original_priority is used to store the original priority of the thread to restore after release lock .
+	. To ensure that the highest thread in priority wakes up first the method max_priority_in_waiters is used calling the function list_max to determine the highest thread in priority and the comparator function is compare_priority .
+
+
+>> Describe the sequence of events when a call to lock_acquire()
+	. First check if the holder of lock is null or not before sema_down(&lock->semaphore) .
+	. If there is no holder then acquire the lock .
+	. Else if there is a holder already to that lock then we check if the priority of the current thread that wants to acquire is higher than the priority of the lock holder and if so we perform priority donation . 
+	. Then check if the holder of that lock waits for another lock repeat the above steps . 
+	. After finishing some updates to the priority of lock and current thread is made .
+
+
+>> Describe the sequence of events when lock_release() is called on a lock that a higher-priority thread is waiting for.
+	. The lock is removed form the list of held_locks of current thread .
+	. Update the priority of the current thread .
+	. Set the holder of the lock is set to NULL . 
+	. sema_up(&lock->semaphore) now .
+
+
+---- SYNCHRONIZATION ----
+
+>> Describe a potential race in thread_set_priority() and explain
+>> In our case we disable interrupts in thread_set_priority() function so no such races is faced and also we check that we are in the case of priority schedular not in advanced schedular case
+
+---- RATIONALE ----
+
+>> Why did you choose this design?  In what ways is it superior to another design you considered?
+	. reasonable time and space complexity
+	. achieves the task and passes all test cases
+	. we don't have other ideas but this implementation could be recursive other than iterative 
+
+			  ADVANCED SCHEDULER
+			  ==================
+
+---- DATA STRUCTURES ----
+
+>> typedef int real -> to distinguish the real variables (recent_cpu and load_avg) but they defined as int because pintos kernel does not support fixed arithmetic
+>> Changed data fields in struct thread in "thread.h":
+	. added field "recent_cpu" of type real -> to save number of ticks of the current thread
+	. added field "nice" of type int
+>> changed fields in "thread.c":
+	. added global static variable "load_avg" of type real -> to save the load average
+
+
+---- ALGORITHMS ----
+
+>> C2: Suppose threads A, B, and C have nice values 0, 1, and 2.  Each
+>> has a recent_cpu value of 0.  Fill in the table below showing the
+>> scheduling decision and the priority and recent_cpu values for each
+>> thread after each given number of timer ticks:
+
+timer  recent_cpu    priority   thread
+ticks   A   B   C   A   B   C   to run
+-----  --  --  --  --  --  --   ------
+ 0     0   0   0   63  61  59   A           . increment recent_cpu by 1 every tick
+ 4     4   0   0   62  61  59   A           . priority = PRI_MAX - recent_cpu / 4 - nice * 2
+ 8     8   0   0   61  61  59   A           . choose the the next thread to run according to its priority
+12     12  0   0   60  61  59   B
+16     12  4   0   60  60  59   B
+20     12  8   0   60  59  59   A
+24     16  8   0   59  59  59   A
+28     20  8   0   58  59  59   C
+32     20  8   4   58  59  58   B
+36     20  12  4   58  58  58   C
+
+>> C3: Did any ambiguities in the scheduler specification make values
+>> in the table uncertain?
+	. Yes, when the priorities are equal I can not know what thread to run
+>> If so, what rule did you use to resolve
+>> them?
+	. I didn't change anything, just let it as it is
+
+>> Does this match the behavior of your scheduler?
+	. Yes, since I didn't change anything
+
+>> C4: How is the way you divided the cost of scheduling between code
+>> inside and outside interrupt context likely to affect performance?
+	. decide not to update all threads' priority every 4 ticks, but the thread only
+
+---- RATIONALE ----
+
+>> C5: Briefly critique your design, pointing out advantages and
+>> disadvantages in your design choices.
+	>> advantages:
+		. simple and easy to read
+		. easy to implement
+		. ensures mutual exclusion for global variables
+
+	>> disadvantages:
+		. It calculates the recent_cpu for all running threads every 
+		. 1 sec, so if the number of ready threads is large, it may affect
+		. the efficiency of timer_interrupt
+
+>> If you were to have extra
+>> time to work on this part of the project, how might you choose to
+>> refine or improve your design?
+	. Do not have any idea right now,
+	. anyway the advanced schedular was simple and straightforward to design and implement
+
+>> C6: The assignment explains arithmetic for fixed-point math in
+>> detail, but it leaves it open to you to implement it.  Why did you
+>> decide to implement it the way you did?
+	. It is decided to implement it using division and multiplication by (1<<14) instead of
+	. using right and left shift to avoid sign changes
+	. reasonable time and space complexity
+	. achieves the task and passes all test cases
+
+>> If you created an abstraction layer for fixed-point math,
+>> that is, an abstract data type and/or a set of functions or macros
+>> to manipulate fixed-point numbers, why did you do so?  If not, why not?
+	. implement fixed-point arithmetics in separate file (fixed-point.h)
+	. defined some macros to make the code as clean as possible
+
+			   SURVEY QUESTIONS
+			   ================
+
+Answering these questions is optional, but it will help us improve the
+course in future semesters.  Feel free to tell us anything you
+want--these questions are just to spur your thoughts.  You may also
+choose to respond anonymously in the course evaluations at the end of
+the semester.
+
+>> In your opinion, was this assignment, or any one of the three problems
+>> in it, too easy or too hard?  Did it take too long or too little time?
+
+>> Did you find that working on a particular part of the assignment gave
+>> you greater insight into some aspect of OS design?
+
+>> Is there some particular fact or hint we should give students in
+>> future semesters to help them solve the problems?  Conversely, did you
+>> find any of our guidance to be misleading?
+
+>> Do you have any suggestions for the TAs to more effectively assist
+>> students, either for future semesters or the remaining projects?
+
+>> Any other comments?
