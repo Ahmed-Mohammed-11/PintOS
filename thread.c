@@ -376,19 +376,6 @@ int thread_get_priority(void)
 //********************* Abdulrahman **************************
 
 void
-every_one_second_update (void)
-{
-  enum intr_level old_level = intr_disable ();
-  
-  /* Update system load average. */
-  calculate_load_avg ();
-
-  calculate_recent_cpu_for_all ();
-
-  intr_set_level (old_level);
-}
-
-void
 calculate_load_avg (void) {
   enum intr_level old_level = intr_disable ();
   struct thread *curr = thread_current ();
@@ -416,15 +403,29 @@ try_thread_yeild (void)
 }
 
 void
+calculate_advanced_priority (struct thread *t, void *aux UNUSED)
+{
+  if (t != idle_thread)
+  {
+    t->priority = PRI_MAX - (to_nearest_int(div_int(t->recent_cpu, 4))) - t->nice * 2;
+    if (t->priority > PRI_MAX)
+    {
+      t->priority = PRI_MAX;
+    }
+    else if (t->priority < PRI_MIN)
+    {
+      t->priority = PRI_MIN;
+    }
+  }
+}
+
+void
 calculate_recent_cpu (struct thread *t, void *aux UNUSED)
 {
-  //if (t != idle_thread)
-  //{
-    if (DEBUG) printf("claculate recent cpu\n");
-    t->recent_cpu = add_int(div_real(mult_real(mult_int(load_avg, 2), t->recent_cpu), add_int(mult_int(load_avg, 2), 1)), t->nice);
-    if (DEBUG) printf("claculated recent cpu = %d\n", t->recent_cpu);
-    calculate_advanced_priority (t, NULL);
-  //}
+  if (DEBUG) printf("claculate recent cpu\n");
+  t->recent_cpu = add_int(div_real(mult_real(mult_int(load_avg, 2), t->recent_cpu), add_int(mult_int(load_avg, 2), 1)), t->nice);
+  if (DEBUG) printf("claculated recent cpu = %d\n", t->recent_cpu);
+  calculate_advanced_priority (t, NULL);
 }
 
 void
@@ -440,23 +441,6 @@ increment_recent_cpu (void)
   struct thread *t = thread_current ();
   if (t != idle_thread) {
     t->recent_cpu = add_int(t->recent_cpu, 1);
-  }
-}
-
-void
-calculate_advanced_priority (struct thread *t, void *aux UNUSED)
-{
-  if (t != idle_thread)
-  {
-    t->priority = PRI_MAX - (to_nearest_int(div_int(t->recent_cpu, 4))) - t->nice * 2;
-    if (t->priority > PRI_MAX)
-    {
-      t->priority = PRI_MAX;
-    }
-    else if (t->priority < PRI_MIN)
-    {
-      t->priority = PRI_MIN;
-    }
   }
 }
 
@@ -481,12 +465,6 @@ void thread_set_nice(int nice)
   }
   calculate_advanced_priority (thread_current (), NULL);
   try_thread_yeild ();
-}
-
-bool
-compare_threads (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
-{
-  return list_entry (a, struct thread, elem)->priority <= list_entry (b, struct thread, elem)->priority;
 }
 
 /* Returns the current thread's nice value. */

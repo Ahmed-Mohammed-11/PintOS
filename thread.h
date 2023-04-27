@@ -160,10 +160,6 @@ void calculate_load_avg (void);
 
 void try_thread_yeild (void);
 
-bool compare_threads (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
-
 void increment_recent_cpu (void);
-
-void every_one_second_update (void);
 
 #endif /* threads/thread.h */
